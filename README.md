@@ -100,8 +100,9 @@ Parameters:
 Installation
 ============
 
-First run the dist task (ant task, in build.xml, check Apache Ant if you have not used it before, or try it in Intellij IDEA) to create a single jar. This should be integrated in the Solr class-path. Then add
-the new request handler has to be registered in the solrconfig.xml file:
+First run the dist task (ant task, in build.xml, check Apache Ant if you have not used it before, or try it in Intellij IDEA) to create a single jar. This should be integrated in the Solr class-path. 
+For building with maven, import lire-solr as existing maven project into eclipse.Run the pom.xml with mvn build (Right click pom.xml and select RunAs option and select mvn build).In the configuration window set goal as package and check skipTests to avoid running tests.lire-solr-request-handler-0.1.0.jar jar file will be created in target path.jar should be integrated in the Solr class-path.
+Then add the new request handler has to be registered in the solrconfig.xml file:
 
      <requestHandler name="/lireq" class="net.semanticmetadata.lire.solr.LireRequestHandler">
         <lst name="defaults">

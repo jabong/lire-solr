@@ -46,10 +46,15 @@ import net.semanticmetadata.lire.indexing.parallel.WorkItem;
 import net.semanticmetadata.lire.solr.indexing.ImageDataProcessor;
 import net.semanticmetadata.lire.utils.ImageUtils;
 import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
 
@@ -99,9 +104,13 @@ public class ParallelSolrIndexer implements Runnable {
     private int maxSideLength = 512;
     private boolean isPreprocessing = true;
     private Class imageDataProcessor = null;
-
+    private boolean isFileModeIndexing = false;
+    
+    /**
+     * These are the image matching algorithms that are supported in this library.
+     * For these indexing is created and can be searched based on one of these algorithms.
+     */
     public ParallelSolrIndexer() {
-        // default constructor.
         listOfFeatures = new HashSet<Class>();
         listOfFeatures.add(PHOG.class);
         listOfFeatures.add(ColorLayout.class);
@@ -110,7 +119,9 @@ public class ParallelSolrIndexer implements Runnable {
         listOfFeatures.add(CEDD.class);
         listOfFeatures.add(ScalableColor.class);
         listOfFeatures.add(OpponentHistogram.class);
-
+        listOfFeatures.add(FCTH.class);
+        listOfFeatures.add(FuzzyOpponentHistogram.class);
+        //listOfFeatures.add(AutoColorCorrelogram.class);
     }
 
     /**
@@ -182,6 +193,8 @@ public class ParallelSolrIndexer implements Runnable {
                 }
             } else if (arg.startsWith("-p")) {
                 e.setPreprocessing(true);
+            }else if (arg.startsWith("-u")) {
+                e.setFileModeIndexing(false);;
             } else if (arg.startsWith("-h")) {
                 // help
                 printHelp();
@@ -250,6 +263,14 @@ public class ParallelSolrIndexer implements Runnable {
     public void setFileList(File fileList) {
         this.fileList = fileList;
     }
+    
+    public boolean isFileModeIndexing() {
+		return isFileModeIndexing;
+	}
+    
+    public void setFileModeIndexing(boolean isFileModeIndexing) {
+		this.isFileModeIndexing = isFileModeIndexing;
+	}
 
     /**
      * Sets the outfile. The outfile has to be in a folder parent to all input images.
@@ -391,26 +412,44 @@ public class ParallelSolrIndexer implements Runnable {
     class Producer implements Runnable {
         public void run() {
             try {
-                BufferedReader br = new BufferedReader(new FileReader(fileList));
-                String line = null, file = null, id = null;
-                File next = null;
-                while ((line = br.readLine()) != null) {
+            	CSVParser csvReader = new CSVParser(new FileReader(fileList), CSVFormat.DEFAULT);
+            	Iterator<CSVRecord> iterator = csvReader.iterator();
+            	while(iterator.hasNext()){
+            		String line = null, file = null, id = null, category = null, brand = null, productId = null, company = null;
+                    File next = null;
+            		CSVRecord record = iterator.next();
+            		id = record.get(0);
+                	file = record.get(1);
+                	productId = record.get(2);
+                	category = record.get(3);
+                	brand = record.get(4);
+                	company = record.get(5);
                 	
-                	String[] lineArray = line.split(",");
-                	id = lineArray[0];
-                	file = lineArray[1];
-                	
-                    next = new File(file);
-                    try {
-                        int fileSize = (int) next.length();
-                        byte[] buffer = new byte[fileSize];
-                        FileInputStream fis = new FileInputStream(next);
-                        fis.read(buffer);
-                        String path = next.getCanonicalPath();
-                        images.put(new CSVWorkItem(id.toString(), path, buffer));
-                    } catch (Exception e) {
-                        System.err.println("Could not read image " + file + ": " + e.getMessage());
-                    }
+                	if(isFileModeIndexing){
+	                    next = new File(file);
+	                    try {
+	                        int fileSize = (int) next.length();
+	                        byte[] buffer = new byte[fileSize];
+	                        FileInputStream fis = new FileInputStream(next);
+	                        fis.read(buffer);
+	                        String path = next.getCanonicalPath();
+	                        images.put(new CSVWorkItem(id.toString(), path, buffer, productId, category, brand, company));
+	                    } catch (Exception e) {
+	                        System.err.println("Could not read image " + file + ": " + e.getMessage());
+	                    }
+                	}else{
+                		BufferedImage img = null;
+                		try {
+                			img = ImageIO.read(new URL(file).openStream());
+                			images.put(new CSVWorkItem(id.toString(), file, img, productId, category, brand, company));
+                		} catch (MalformedURLException e) {
+                			e.printStackTrace();
+                		} catch (IOException e) {
+                			e.printStackTrace();
+                		} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+                	}
                 }
                 for (int i = 0; i < numberOfThreads*2; i++) {
                     String tmpString = null;
@@ -429,7 +468,7 @@ public class ParallelSolrIndexer implements Runnable {
             ended = true;
         }
     }
-
+    
     class Consumer implements Runnable {
         CSVWorkItem tmp = null;
         LinkedList<LireFeature> features = new LinkedList<LireFeature>();
@@ -450,21 +489,35 @@ public class ParallelSolrIndexer implements Runnable {
 //                        locallyEnded = true;
                     // well the last thing we want is an exception in the very last round.
                     if (!locallyEnded) {
-                        tmp = images.take();
-                        if (tmp.getBuffer() == null)
-                            locallyEnded = true;
-                        else {
-                            count++;
-                            overallCount++;
-                        }
+                    	tmp = images.take();
+                    	if(isFileModeIndexing){
+	                        if (tmp.getBuffer() == null)
+	                            locallyEnded = true;
+	                        else {
+	                            count++;
+	                            overallCount++;
+	                        }
+                    	}else{
+                    		if(tmp.getImage() == null)
+                    			locallyEnded = true;
+                    		else {
+                    			count++;
+	                            overallCount++;
+                    		}
+                    	}
                     }
 
                     if (!locallyEnded) {
                         sb.delete(0, sb.length());
-                        ByteArrayInputStream b = new ByteArrayInputStream(tmp.getBuffer());
-
-                        // reads the image. Make sure twelve monkeys lib is in the path to read all jpegs and tiffs.
-                        BufferedImage read = ImageIO.read(b);
+                        BufferedImage read = null;
+                        if(isFileModeIndexing){
+                        	ByteArrayInputStream b = new ByteArrayInputStream(tmp.getBuffer());
+	
+	                        // reads the image. Make sure twelve monkeys lib is in the path to read all jpegs and tiffs.
+	                        read = ImageIO.read(b);
+                        }else{
+                        	read = tmp.getImage();
+                        }
                         // --------< preprocessing >-------------------------
                         // converts color space to INT_RGB
                         BufferedImage img = ImageUtils.createWorkingCopy(read);
@@ -514,7 +567,23 @@ public class ParallelSolrIndexer implements Runnable {
                         sb.append("</field>");
                         if (idp != null)
                             sb.append(idp.getAdditionalFields(tmp.getFileName()));
-
+                        
+                        if(tmp.getCategory() != null){
+	                        sb.append("<field name=\"category\">");
+	                        sb.append(tmp.getCategory());
+	                        sb.append("</field>");
+                        }
+                        if(tmp.getBrand() != null){
+	                        sb.append("<field name=\"brand\">");
+	                        sb.append(tmp.getBrand());
+	                        sb.append("</field>");
+                        }
+                        if(tmp.getProductId() != null){
+	                        sb.append("<field name=\"product_id\">");
+	                        sb.append(tmp.getProductId());
+	                        sb.append("</field>");
+                        }
+                        
                         for (LireFeature feature : features) {
                             String featureCode = FeatureRegistry.getCodeForClass(feature.getClass());
                             if (featureCode != null) {

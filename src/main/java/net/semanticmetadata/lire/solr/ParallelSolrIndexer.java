@@ -583,6 +583,11 @@ public class ParallelSolrIndexer implements Runnable {
 	                        sb.append(tmp.getProductId());
 	                        sb.append("</field>");
                         }
+                        if(tmp.getCompany() != null){
+	                        sb.append("<field name=\"company\">");
+	                        sb.append(tmp.getCompany());
+	                        sb.append("</field>");
+                        }
                         
                         for (LireFeature feature : features) {
                             String featureCode = FeatureRegistry.getCodeForClass(feature.getClass());

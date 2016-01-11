@@ -1,0 +1,3 @@
+#To create the indexing for the images
+
+java -jar target/*.jar net.semanticmetadata.lire.solr.ParallelSolrIndexer -i solr_update_data.xml -o output_final.xml

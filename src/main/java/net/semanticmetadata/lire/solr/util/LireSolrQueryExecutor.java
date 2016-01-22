@@ -5,19 +5,14 @@ import java.net.URLEncoder;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.client.solrj.SolrServerException;
-import org.apache.solr.client.solrj.impl.HttpSolrServer;
-import org.apache.solr.client.solrj.response.QueryResponse;
-import org.apache.solr.common.SolrDocumentList;
-import org.apache.solr.common.util.NamedList;
-
 import com.google.common.reflect.TypeToken;
 import com.google.gson.GsonBuilder;
 import com.sun.jersey.api.client.ClientHandlerException;
 
 import net.semanticmetadata.lire.solr.bean.LireDocument;
+import net.semanticmetadata.lire.solr.bean.LireDocumentExtended;
 import net.semanticmetadata.lire.solr.bean.LireSolrResponseBean;
+import net.semanticmetadata.lire.solr.bean.LireSolrResponseExtendedBean;
 import net.semanticmetadata.lire.solr.client.LireJerseyClient;
 import net.semanticmetadata.lire.solr.filters.LireFilters;
 import net.semanticmetadata.lire.solr.filters.LireParams;
@@ -30,6 +25,7 @@ import net.semanticmetadata.lire.solr.filters.LireParams;
  */
 public class LireSolrQueryExecutor {
 	public static String LIREQ = "lireq";
+	public static String SELECT = "select";
 	
 	/**
 	 * This util method creates the lire query
@@ -41,6 +37,7 @@ public class LireSolrQueryExecutor {
 	 * @return
 	 */
 	public String createLireQuery(String queryType, String imgUrl, int rows, String field, Map<String, String> filterMap){
+		//System.out.println("query creation started for "+field+":"+System.currentTimeMillis());
 		StringBuilder queryBuilder = new StringBuilder();
 		queryType = queryType != null ? queryType : LIREQ;
 		queryBuilder.append("/").append(queryType).append("?");
@@ -92,6 +89,7 @@ public class LireSolrQueryExecutor {
 		}catch(UnsupportedEncodingException e) {
 			e.printStackTrace();
 		}
+		//System.out.println("query creation ended:"+System.currentTimeMillis());
 		return queryBuilder.toString();
 	}
 	
@@ -127,6 +125,7 @@ public class LireSolrQueryExecutor {
 	 * @return list of documents
 	 */
 	public List<LireDocument> executeQuery(String serverURL, String query){
+		//System.out.println("execution started:"+System.currentTimeMillis());
 		LireJerseyClient clientJ = new LireJerseyClient();
 		String url = serverURL+query;
 		String response = null;
@@ -135,6 +134,7 @@ public class LireSolrQueryExecutor {
 		}catch(ClientHandlerException che){
 			throw new ClientHandlerException(che);
 		}
+		//System.out.println("execution ended:"+System.currentTimeMillis());
 		return parseSolrDocumentList(response);
 	}
 	
@@ -162,47 +162,183 @@ public class LireSolrQueryExecutor {
 		return responseBean.getDocs();
 	}
 	
-	private List<LireDocument> executeQuery(String serverURL, SolrQuery query){
-		HttpSolrServer server = LireSolrServerInstanceFactory.getSolrServer(serverURL);
-		QueryResponse response = null;
-		
-		try {
-			response = server.query(query);
-		} catch (SolrServerException e) {
+	/**
+	 * This util method creates the lire query
+	 * @param queryType lireq
+	 * @param imgUrl url of image against which image matching would be executed
+	 * @param rows number of rows in output
+	 * @param field name of the algorithms used for matching (ce_ha,sc_ha....)
+	 * @param filterMap filterQuery details
+	 * @return
+	 */
+	public String createLireSearchQueryForProducts(String queryType, String productId, int rows, List<String> fields, Map<String, String> filterMap){
+		//System.out.println("query creation started for "+field+":"+System.currentTimeMillis());
+		StringBuilder queryBuilder = new StringBuilder();
+		queryType = queryType != null ? queryType : LIREQ;
+		queryBuilder.append("/").append(queryType).append("?");
+		queryBuilder.append(LireParams.Query.getParam()).append("=").append("*:*");
+		try{
+			if(filterMap != null && !filterMap.isEmpty()){
+				if(!validateFilterMaps(filterMap)){
+					throw new RuntimeException("params not correct");
+				}
+				boolean isFirst = true;
+				queryBuilder.append("&");
+				queryBuilder.append(LireParams.FQ.getParam()).append("=");
+				for(LireFilters lireFilter : LireFilters.values()){
+					if(filterMap.get(lireFilter.getFilter()) != null){
+						if(isFirst){
+							isFirst = false;
+						}else{
+							queryBuilder.append(",");
+						}
+						queryBuilder.append(lireFilter.getFilter()).append(":").append(
+								URLEncoder.encode(filterMap.get(lireFilter.getFilter()),"utf-8"));
+					}
+				}
+			}
+			
+			if(productId != null){
+				queryBuilder.append("&");
+				queryBuilder.append(LireParams.PRODUCT_ID.getParam()).append("=").append(productId);
+			}
+			
+			if(fields != null){
+				StringBuilder fieldsBuilder = new StringBuilder();
+				boolean first = true;
+				for(String str : fields){
+					if(first){
+						first = false;
+					}else{
+						fieldsBuilder.append(",");
+					}
+					fieldsBuilder.append(str);
+				}
+				queryBuilder.append("&");
+				queryBuilder.append(LireParams.FIELD.getParam()).append("=").append(fieldsBuilder.toString());
+						//URLEncoder.encode(fieldsBuilder.toString(),"utf-8"));
+			}
+			
+			if(rows == 0){
+				rows = 10;
+			}
+			queryBuilder.append("&");
+			queryBuilder.append(LireParams.ROWS.getParam()).append("=").append(rows);
+			queryBuilder.append("&");
+			queryBuilder.append(LireParams.WT.getParam()).append("=").append("json");
+			queryBuilder.append("&");
+			queryBuilder.append(LireParams.FL.getParam()).append("=").append("*");
+			queryBuilder.append("&");
+			queryBuilder.append(LireParams.START.getParam()).append("=").append("0");
+		}catch(UnsupportedEncodingException e) {
 			e.printStackTrace();
 		}
-		SolrDocumentList docList = response.getResults();
-		NamedList<Object> result1 = response.getResponse();
-		Object result2 = result1.get("docs");
-		System.out.println(result2.getClass());
-		NamedList<?> result = response.getResponseHeader();
-		result.get("");
-		SolrDocumentList docs = (SolrDocumentList) result1.get("response");
-		System.out.println(result.getClass());
-		Map<String, SolrDocumentList> list = response.getExpandedResults();
-		Map<String, String> map1 = response.getExplainMap();
-		return null;
+		//System.out.println("query creation ended:"+System.currentTimeMillis());
+		return queryBuilder.toString();
 	}
 	
-	private SolrQuery createQuery(String queryType, String imgUrl, int rows, String field, Map<String, String> filterMap){
-		SolrQuery query = new SolrQuery("*:*");
-		queryType = queryType != null ? queryType : LIREQ; 
-		String imageURL = null;
-		try {
-			imageURL = URLEncoder.encode(imgUrl, "utf-8");
-		} catch (UnsupportedEncodingException e) {
+	public List<LireDocumentExtended> executeProductBasedQuery(String serverURL, String query){
+		//System.out.println("execution started:"+System.currentTimeMillis());
+		LireJerseyClient clientJ = new LireJerseyClient();
+		String url = serverURL+query;
+		String response = null;
+		try{
+			response = clientJ.getDataFromServer(url, "application/json", null, null);
+		}catch(ClientHandlerException che){
+			throw new ClientHandlerException(che);
+		}
+		//System.out.println("execution ended:"+System.currentTimeMillis());
+		return parseSolrDocumentExtendedList(response);
+	}
+	
+	private List<LireDocumentExtended> parseSolrDocumentExtendedList(String response) {
+		if(response == null){
+			return null;
+		}
+		LireSolrResponseExtendedBean responseBean = new GsonBuilder().create().fromJson(response,
+				new TypeToken<LireSolrResponseExtendedBean>(){}.getType());
+		return responseBean.getDocs();
+	}
+
+	public List<LireDocumentExtended> createAndExecuteProductBasedLireQuery(
+			String serverURL, String queryType, String productId, int rows, List<String> fields, Map<String, String> filterMap){
+		String query = createLireSearchQueryForProducts(queryType, productId, rows, fields, filterMap);
+		return executeProductBasedQuery(serverURL, query);
+	}
+	
+	public List<LireDocument> createAndExecuteHashBasedLireQuery(String serverURL, String queryType, String hash, String feature, int rows, String field, Map<String, String> filterMap){
+		String query = createLireQueryByHash(queryType, hash, feature, rows, field, filterMap);
+		return executeQuery(serverURL, query);
+	}
+	
+	/**
+	 * This util method creates the lire query
+	 * @param queryType lireq
+	 * @param imgUrl url of image against which image matching would be executed
+	 * @param rows number of rows in output
+	 * @param field name of the algorithms used for matching (ce_ha,sc_ha....)
+	 * @param filterMap filterQuery details
+	 * @return
+	 */
+	public String createLireQueryByHash(String queryType, String hash, String feature, int rows, String field, Map<String, String> filterMap){
+		//System.out.println("query creation started for "+field+":"+System.currentTimeMillis());
+		StringBuilder queryBuilder = new StringBuilder();
+		queryType = queryType != null ? queryType : LIREQ;
+		queryBuilder.append("/").append(queryType).append("?");
+		queryBuilder.append(LireParams.Query.getParam()).append("=").append("*:*");
+		try{
+			if(filterMap != null && !filterMap.isEmpty()){
+				if(!validateFilterMaps(filterMap)){
+					throw new RuntimeException("params not correct");
+				}
+				boolean isFirst = true;
+				queryBuilder.append("&");
+				queryBuilder.append(LireParams.FQ.getParam()).append("=");
+				for(LireFilters lireFilter : LireFilters.values()){
+					if(filterMap.get(lireFilter.getFilter()) != null){
+						if(isFirst){
+							isFirst = false;
+						}else{
+							queryBuilder.append(",");
+						}
+						queryBuilder.append(lireFilter.getFilter()).append(":").append(
+								URLEncoder.encode(filterMap.get(lireFilter.getFilter()),"utf-8"));
+					}
+				}
+			}
+			
+			if(hash != null){
+				queryBuilder.append("&");
+				queryBuilder.append(LireParams.HASH.getParam()).append("=").append(URLEncoder.encode(hash,"utf-8"));
+			}
+			
+			if(feature != null){
+				queryBuilder.append("&");
+				queryBuilder.append(LireParams.FEATURE.getParam()).append("=").append(URLEncoder.encode(feature,"utf-8"));
+			}
+			
+			if(field != null){
+				queryBuilder.append("&");
+				queryBuilder.append(LireParams.FIELD.getParam()).append("=").append(
+						URLEncoder.encode(field,"utf-8"));
+			}
+			
+			if(rows == 0){
+				rows = 10;
+			}
+			queryBuilder.append("&");
+			queryBuilder.append(LireParams.ROWS.getParam()).append("=").append(rows);
+			queryBuilder.append("&");
+			queryBuilder.append(LireParams.WT.getParam()).append("=").append("json");
+			queryBuilder.append("&");
+			queryBuilder.append(LireParams.FL.getParam()).append("=").append("*");
+			queryBuilder.append("&");
+			queryBuilder.append(LireParams.START.getParam()).append("=").append("0");
+		}catch(UnsupportedEncodingException e) {
 			e.printStackTrace();
 		}
-		query.setRequestHandler("/lireq");
-		query.setFilterQueries(/*LireFilters.COMPANY+":"+filterMap.get(LireFilters.COMPANY),*/
-				LireFilters.CATEGORY.getFilter()+":"+filterMap.get(LireFilters.CATEGORY.getFilter())+","+
-				LireFilters.BRAND.getFilter()+":"+filterMap.get(LireFilters.BRAND.getFilter()));
-		query.setRows(rows);
-		query.setParam(LireParams.URL.getParam(), imgUrl);
-		query.setParam(LireParams.FIELD.getParam(), field);
-		query.setParam("wt", "json");
-		query.setFields("*");
-		query.setStart(0);
-		return query;
+		//System.out.println("query creation ended:"+System.currentTimeMillis());
+		return queryBuilder.toString();
 	}
+	
 }

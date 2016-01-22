@@ -18,15 +18,24 @@ public class LireJerseyClient {
 	}*/
 	
 	public String getDataFromServer(String url, String mediaType, String headerKey, String headerValue){
+		
+		long stc = System.currentTimeMillis();
 		Client client = Client.create();
 		client.setConnectTimeout(120000);
 		ClientResponse response = null;
 		try{
 			WebResource webResource = client.resource(url);
-
+			long etc = System.currentTimeMillis();
+			
+			//System.out.println("Time taken to create client " + (etc - stc));
+			
+			long st = System.currentTimeMillis();
 			response = webResource.
 					accept(mediaType).
 					get(ClientResponse.class);
+			long et = System.currentTimeMillis();
+			
+			//System.out.println("time taken for : " + url + " : " + (et - st));
 			if (response.getStatus() != 200) {
 				   throw new RuntimeException("Failed : HTTP error code : "
 					+ response.getStatus());

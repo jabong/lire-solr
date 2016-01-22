@@ -3,7 +3,8 @@ package net.semanticmetadata.lire.solr.filters;
 public enum LireFilters {
 	CATEGORY("category"),
 	BRAND("brand"),
-	COMPANY("company");
+	COMPANY("company"),
+	PRODUCT_ID("product_id");
 	
 	private String filter;
 

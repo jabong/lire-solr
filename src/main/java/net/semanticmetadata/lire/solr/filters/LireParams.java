@@ -8,7 +8,10 @@ public enum LireParams {
 	ROWS("rows"),
 	START("start"),
 	Query("q"),
-	WT("wt");
+	WT("wt"), 
+	PRODUCT_ID("productId"), 
+	HASH("hashes"),
+	FEATURE("feature");
 	
 	String param; 
 	

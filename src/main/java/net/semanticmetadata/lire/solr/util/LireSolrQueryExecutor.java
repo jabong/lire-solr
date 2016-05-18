@@ -267,7 +267,13 @@ public class LireSolrQueryExecutor {
 	}
 	
 	public List<LireDocument> createAndExecuteHashBasedLireQuery(String serverURL, String queryType, String hash, String feature, int rows, String field, Map<String, String> filterMap){
-		String query = createLireQueryByHash(queryType, hash, feature, rows, field, filterMap);
+		String query = createLireQueryByHash(queryType, hash, feature, rows, field, filterMap, null);
+		return executeQuery(serverURL, query);
+	}
+	
+	public List<LireDocument> createAndExecuteHashBasedLireQueryOnSkuList(String serverURL, String queryType, String hash, String feature, 
+			int rows, String field, Map<String, String> filterMap, List<String> skuList){
+		String query = createLireQueryByHash(queryType, hash, feature, rows, field, filterMap, skuList);
 		return executeQuery(serverURL, query);
 	}
 	
@@ -280,7 +286,7 @@ public class LireSolrQueryExecutor {
 	 * @param filterMap filterQuery details
 	 * @return
 	 */
-	public String createLireQueryByHash(String queryType, String hash, String feature, int rows, String field, Map<String, String> filterMap){
+	public String createLireQueryByHash(String queryType, String hash, String feature, int rows, String field, Map<String, String> filterMap, List<String> skuList){
 		//System.out.println("query creation started for "+field+":"+System.currentTimeMillis());
 		StringBuilder queryBuilder = new StringBuilder();
 		queryType = queryType != null ? queryType : LIREQ;
@@ -312,6 +318,11 @@ public class LireSolrQueryExecutor {
 				queryBuilder.append(LireParams.HASH.getParam()).append("=").append(URLEncoder.encode(hash,"utf-8"));
 			}
 			
+			if(skuList != null && skuList.size() > 0){
+				queryBuilder.append("&");
+				queryBuilder.append(LireParams.SKULIST.getParam()).append("=").append(URLEncoder.encode(createStringFromList(skuList, ","),"utf-8"));
+			}
+			
 			if(feature != null){
 				queryBuilder.append("&");
 				queryBuilder.append(LireParams.FEATURE.getParam()).append("=").append(URLEncoder.encode(feature,"utf-8"));
@@ -339,6 +350,20 @@ public class LireSolrQueryExecutor {
 		}
 		//System.out.println("query creation ended:"+System.currentTimeMillis());
 		return queryBuilder.toString();
+	}
+
+	private String createStringFromList(List<String> skuList, String separator) {
+		StringBuilder skuStr = new StringBuilder();
+		boolean bool = true;
+		for(String sku: skuList){
+			if(bool){
+				skuStr.append(sku);
+				bool = false;
+			}else{
+				skuStr.append(separator).append(sku);
+			}
+		}
+		return skuStr.toString();
 	}
 	
 }

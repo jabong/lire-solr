@@ -92,6 +92,7 @@ public class ParallelSolrIndexer implements Runnable {
     private boolean force = false;
     private static boolean individualFiles = false;
     private static int numberOfThreads = 4;
+    private static int numberOfProducersThreads = 0;
     LinkedBlockingQueue<CSVWorkItem> images = new LinkedBlockingQueue<CSVWorkItem>(maxCacheSize);
     boolean ended = false;
     int overallCount = 0;
@@ -132,6 +133,10 @@ public class ParallelSolrIndexer implements Runnable {
     public static void setNumberOfThreads(int numberOfThreads) {
         ParallelSolrIndexer.numberOfThreads = numberOfThreads;
     }
+    
+    public static void setNumberOfProducersThreads(int numberOfProducersThreads) {
+		ParallelSolrIndexer.numberOfProducersThreads = numberOfProducersThreads;
+	}
 
     public static void main(String[] args) throws IOException {
         BitSampling.readHashFunctions();
@@ -203,6 +208,15 @@ public class ParallelSolrIndexer implements Runnable {
                 if ((i + 1) < args.length)
                     try {
                         ParallelSolrIndexer.numberOfThreads = Integer.parseInt(args[i + 1]);
+                    } catch (Exception e1) {
+                        System.err.println("Could not set number of threads to \"" + args[i + 1] + "\".");
+                        e1.printStackTrace();
+                    }
+                else printHelp();
+            } else if (arg.startsWith("-q")) {
+                if ((i + 1) < args.length)
+                    try {
+                        ParallelSolrIndexer.numberOfProducersThreads = Integer.parseInt(args[i + 1]);
                     } catch (Exception e1) {
                         System.err.println("Could not set number of threads to \"" + args[i + 1] + "\".");
                         e1.printStackTrace();
@@ -329,8 +343,19 @@ public class ParallelSolrIndexer implements Runnable {
                 dos = new BufferedOutputStream(new FileOutputStream(outFile), 1024 * 1024 * 8);
                 dos.write("<add>\n".getBytes());
             }
-            Thread p = new Thread(new Producer(), "Producer");
-            p.start();
+            LinkedList<Thread> producerThreads = new LinkedList<Thread>();
+            if(numberOfProducersThreads == 0){
+	            Thread p = new Thread(new Producer(), "Producer");
+	            p.start();
+            }else{
+            	for (int i = 0; i < numberOfProducersThreads; i++) {
+                    Thread p = new Thread(new Producer(i), "Producer-" + i);
+                    p.start();
+                    producerThreads.add(p);
+                }
+            }
+            
+            
             LinkedList<Thread> threads = new LinkedList<Thread>();
             long l = System.currentTimeMillis();
             for (int i = 0; i < numberOfThreads; i++) {
@@ -340,6 +365,11 @@ public class ParallelSolrIndexer implements Runnable {
             }
             Thread m = new Thread(new Monitoring(), "Monitoring");
             m.start();
+            if(numberOfProducersThreads > 0){
+	            for (Iterator<Thread> iterator = producerThreads.iterator(); iterator.hasNext(); ) {
+	                iterator.next().join();
+	            }
+            }
             for (Iterator<Thread> iterator = threads.iterator(); iterator.hasNext(); ) {
                 iterator.next().join();
             }
@@ -410,9 +440,18 @@ public class ParallelSolrIndexer implements Runnable {
     }
 
     class Producer implements Runnable {
+    	String producerFileName;
+    	public Producer(int productNo) {
+    		producerFileName = fileList.getName()+"_"+productNo;
+		}
+    	public Producer() {
+    		producerFileName = fileList.getName();
+		}
         public void run() {
             try {
-            	CSVParser csvReader = new CSVParser(new FileReader(fileList), CSVFormat.DEFAULT);
+            	File producerFile = new File(producerFileName);
+            	//CSVParser csvReader = new CSVParser(new FileReader(fileList), CSVFormat.DEFAULT);
+            	CSVParser csvReader = new CSVParser(new FileReader(producerFile), CSVFormat.DEFAULT);
             	Iterator<CSVRecord> iterator = csvReader.iterator();
             	while(iterator.hasNext()){
             		String line = null, file = null, id = null, category = null, brand = null, productId = null, company = null;
@@ -439,16 +478,52 @@ public class ParallelSolrIndexer implements Runnable {
 	                    }
                 	}else{
                 		BufferedImage img = null;
-                		try {
-                			img = ImageIO.read(new URL(file).openStream());
-                			images.put(new CSVWorkItem(id.toString(), file, img, productId, category, brand, company));
-                		} catch (MalformedURLException e) {
-                			e.printStackTrace();
-                		} catch (IOException e) {
-                			e.printStackTrace();
-                		} catch (InterruptedException e) {
-							e.printStackTrace();
-						}
+                		for(int i = 0; i < 4; i++) {
+                			try {
+                    			img = ImageIO.read(new URL(file).openStream());
+                    			images.put(new CSVWorkItem(id.toString(), file, img, productId, category, brand, company));
+                    			break;
+                    		} catch (InterruptedException e) {
+                                e.printStackTrace();
+                                break;
+                            } catch (MalformedURLException e1) {
+                    			e1.printStackTrace();
+                    			break;
+                    		} catch (Exception e2) {
+                    			try {
+									Thread.sleep(1000);
+								} catch (InterruptedException e) {
+									e.printStackTrace();
+								}
+                    			e2.printStackTrace();
+                    		}
+                		}
+                		
+//                		try {
+//                			img = ImageIO.read(new URL(file).openStream());
+//                			//images.put(new CSVWorkItem(id.toString(), file, img, productId, category, brand, company));
+//                		} catch (MalformedURLException e) {
+//                			e.printStackTrace();
+//                		} catch (Exception e1) {
+//                			try{
+//                				img = ImageIO.read(new URL(file).openStream());
+//                			} catch(Exception e2){
+//                				try{
+//                					img = ImageIO.read(new URL(file).openStream());
+//                				} catch(Exception e3){
+//                					try{
+//                						img = ImageIO.read(new URL(file).openStream());
+//                					} catch(Exception e){
+//                						e.printStackTrace();
+//                					}
+//                				}
+//                			}
+//                		} 
+//                		try{
+//                			images.put(new CSVWorkItem(id.toString(), file, img, productId, category, brand, company));
+//                		} catch (InterruptedException e) {
+//							e.printStackTrace();
+//						}
                 	}
                 }
                 for (int i = 0; i < numberOfThreads*2; i++) {
@@ -527,7 +602,7 @@ public class ParallelSolrIndexer implements Runnable {
                             img = df.filter(img, null);
                             img = ImageUtils.trimWhiteSpace(img); // trims white space
                         }
-                        // --------< / preprocessing >-------------------------
+                        // --------< / preprocessing >-------------------------locallyEnded
 
                         if (maxSideLength > 50)
                             img = ImageUtils.scaleImage(img, maxSideLength); // scales image to 512 max sidelength.
@@ -551,7 +626,7 @@ public class ParallelSolrIndexer implements Runnable {
                             System.err.println("Could not instantiate ImageDataProcessor!");
                             e.printStackTrace();
                         }
-                        // --------< creating doc >-------------------------
+                        // --------< clocallyEndedreating doc >-------------------------
                         sb.append("<doc>");
                         sb.append("<field name=\"id\">");
                         if (idp == null)

@@ -11,6 +11,9 @@ mvn install:install-file -Dfile=/home/jabong/devproj/lire-solr/lib/lire.jar -Dgr
 
 mvn install:install-file -Dfile=/home/jabong/devproj/lire-solr/lib/jhlabs.jar -DgroupId=com.jhlabs -DartifactId=image -Dversion=1.7 -Dpackaging=jar
 
+To run
+java -jar target/*.jar net.semanticmetadata.lire.solr.ParallelSolrIndexer -i myntra_solr_input.xml -o myntra_output_final_solr.xml
+
 Then for solr, just add the folder or download 4.10 version and remove the data from 
 copy the test folder from with the solr and copy that to a new name.
 Change the value in core.properties to new value that you have used as schema.

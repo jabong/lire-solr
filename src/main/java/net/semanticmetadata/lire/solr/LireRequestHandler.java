@@ -144,7 +144,9 @@ public class LireRequestHandler extends RequestHandlerBase {
     public void handleRequestBody(SolrQueryRequest req, SolrQueryResponse rsp) throws Exception {
     	if (req.getParams().get("id") != null) { // we are searching for an image based on an URL
     		handleIdSearch(req, rsp);
-    	} else if (req.getParams().get("hashes") != null) { // we are searching for hashes ...
+    	} else if (req.getParams().get("hashes") != null && req.getParams().get("skuList") != null) { // we are searching for hashes ...
+            handleHashSearchInSkuList(req, rsp);
+        } else if (req.getParams().get("hashes") != null) { // we are searching for hashes ...
             handleHashSearch(req, rsp);
         } else if (req.getParams().get("url") != null) { // we are searching for an image based on an URL
             handleUrlSearch(req, rsp);
@@ -439,6 +441,10 @@ public class LireRequestHandler extends RequestHandlerBase {
         SolrParams params = req.getParams();
         String paramUrl = params.get("url");
         String paramField = "cl_ha";
+        String[] productIds = null;
+        if(params.get("skulist") != null){
+        	productIds = params.get("skulist").split(",");
+        }
         if (req.getParams().get("field") != null)
             paramField = req.getParams().get("field");
         int paramRows = defaultNumberOfResults;
@@ -474,13 +480,30 @@ public class LireRequestHandler extends RequestHandlerBase {
         }
         // search if the feature has been extracted.
         long solr_stc = System.currentTimeMillis();
-        if (feat != null)
-        	doSearch(req, rsp, req.getSearcher(), paramField, paramRows, termFilter, createQuery(hashes, paramField, numberOfQueryTerms), feat);
+        if (feat != null){
+        	BooleanQuery query = createQuery(hashes, paramField, numberOfQueryTerms);
+        	if(productIds != null && productIds.length > 0){
+        		BooleanQuery productListQuery = addProductIdListToQuery("product_id", productIds);
+        		query.add(productListQuery, Occur.MUST);
+        	}
+        	doSearch(req, rsp, req.getSearcher(), paramField, paramRows, termFilter, query, feat);
+        }
         long solr_etc = System.currentTimeMillis();
         System.out.println("time taken by solr : " + (solr_etc - solr_stc));
     }
 
-    private void handleExtract(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, InstantiationException, IllegalAccessException {
+    /*
+     * This is added so as to add the list of products under which file needs to be searched.
+     */
+    private BooleanQuery addProductIdListToQuery(String paramField, String[] productIds) {
+    	BooleanQuery query = new BooleanQuery();
+    	for (int i = 0; i < productIds.length; i++) {
+            query.add(new BooleanClause(new TermQuery(new Term(paramField, productIds[i])), BooleanClause.Occur.SHOULD));
+        }
+        return query;
+	}
+
+	private void handleExtract(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, InstantiationException, IllegalAccessException {
         SolrParams params = req.getParams();
         String paramUrl = params.get("extract");
         String paramField = "cl_ha";
@@ -518,6 +541,68 @@ public class LireRequestHandler extends RequestHandlerBase {
         }
         // search if the feature has been extracted.
 //        if (feat != null) doSearch(rsp, req.getSearcher(), paramField, paramRows, query, feat);
+    }
+    
+    /**
+     * Search based on the given image hashes.
+     *
+     * @param req
+     * @param rsp
+     * @throws IOException
+     * @throws IllegalAccessException
+     * @throws InstantiationException
+     */
+    private void handleHashSearchInSkuList(SolrQueryRequest req, SolrQueryResponse rsp) throws IOException, IllegalAccessException, InstantiationException {
+        SolrParams params = req.getParams();
+        SolrIndexSearcher searcher = req.getSearcher();
+        // get the params needed:
+        // hashes=x y z ...
+        // feature=<base64>
+        // field=<cl_ha|ph_ha|...>
+
+        String[] hashStrings = params.get("hashes").trim().split(" ");
+        String[] productIds = null;
+        if(params.get("skulist") != null){
+        	productIds = params.get("skulist").split(",");
+        }
+        
+        byte[] featureVector = Base64.decodeBase64(params.get("feature"));
+        String paramField = "cl_ha";
+        if (req.getParams().get("field") != null)
+            paramField = req.getParams().get("field");
+        int paramRows = defaultNumberOfResults;
+        if (params.getInt("rows") != null)
+            paramRows = params.getInt("rows");
+        numberOfQueryTerms = req.getParams().getDouble("accuracy", DEFAULT_NUMBER_OF_QUERY_TERMS);
+        numberOfCandidateResults = req.getParams().getInt("candidates", DEFAULT_NUMBER_OF_CANDIDATES);
+        // create boolean query:
+//        System.out.println("** Creating query.");
+        LinkedList<Term> termFilter = new LinkedList<Term>();
+        BooleanQuery query = new BooleanQuery();
+        for (int i = 0; i < hashStrings.length; i++) {
+            // be aware that the hashFunctionsFileName of the field must match the one you put the hashes in before.
+            hashStrings[i] = hashStrings[i].trim();
+            if (hashStrings[i].length() > 0) {
+                termFilter.add(new Term(paramField, hashStrings[i].trim()));
+//                System.out.println("** " + field + ": " + hashes[i].trim());
+            }
+        }
+        Collections.shuffle(termFilter);
+        for (int k = 0; k < termFilter.size() * numberOfQueryTerms; k++) {
+            query.add(new BooleanClause(new TermQuery(termFilter.get(k)), BooleanClause.Occur.SHOULD));
+        }
+//        System.out.println("** Doing search.");
+
+        // query feature
+        LireFeature queryFeature = (LireFeature) FeatureRegistry.getClassForHashField(paramField).newInstance();
+        queryFeature.setByteArrayRepresentation(featureVector);
+        Query hashBasedQuery = new MatchAllDocsQuery();
+    	if(productIds != null && productIds.length > 0){
+    		BooleanQuery productListQuery = addProductIdListToQuery("product_id", productIds);
+    		query.add(productListQuery, Occur.MUST);
+    	}
+        // get results:
+        doSearch(req, rsp, searcher, paramField, paramRows, termFilter, hashBasedQuery, queryFeature);
     }
 
     /**

@@ -1,3 +1,6 @@
 #To create the indexing for the images
 
 java -jar target/*.jar net.semanticmetadata.lire.solr.ParallelSolrIndexer -i solr_update_data.xml -o output_final.xml
+
+
+nohup java -jar lire-solr-0.1.0-jar-with-dependencies.jar net.semanticmetadata.lire.solr.ParallelSolrIndexer -i Lamoda_image.sql -o Lamoda_image_output_final_1000threads.sql -n 1000 &

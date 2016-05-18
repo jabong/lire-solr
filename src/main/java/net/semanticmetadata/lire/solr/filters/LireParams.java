@@ -11,6 +11,7 @@ public enum LireParams {
 	WT("wt"), 
 	PRODUCT_ID("productId"), 
 	HASH("hashes"),
+	SKULIST("skulist"),
 	FEATURE("feature");
 	
 	String param; 

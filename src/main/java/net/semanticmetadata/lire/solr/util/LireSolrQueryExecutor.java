@@ -2,6 +2,10 @@ package net.semanticmetadata.lire.solr.util;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -277,6 +281,59 @@ public class LireSolrQueryExecutor {
 		return executeQuery(serverURL, query);
 	}
 	
+	public List<LireDocument> createAndExecuteMultiHashBasedLireQueryOnSkuList(String serverURL, String queryType, Map<String, String> hashFeatureMap, 
+			int rows, String field, Map<String, String> filterMap, List<String> skuList){
+		if(hashFeatureMap == null || hashFeatureMap.size() <= 0){
+			return new ArrayList<LireDocument>();
+		}
+		return getNearestMatchedImages(serverURL, queryType, hashFeatureMap, rows, field, filterMap, skuList);
+	}
+	
+	public List<LireDocument> createAndExecuteMultiHashBasedLireQuery(String serverURL, String queryType, Map<String, String> hashFeatureMap, int rows, String field, Map<String, String> filterMap){
+		List<LireDocument> nearestKMatchedImageList = new ArrayList<LireDocument>();
+		if(hashFeatureMap == null || hashFeatureMap.size() <= 0){
+			return new ArrayList<LireDocument>();
+		}
+		nearestKMatchedImageList =  getNearestMatchedImages(serverURL, queryType, hashFeatureMap, rows, field, filterMap, null);
+		return nearestKMatchedImageList.subList(0, rows);
+	}
+	
+	private List<LireDocument> getNearestMatchedImages(String serverURL, String queryType,
+			Map<String, String> hashFeatureMap, int rows, String field, Map<String, String> filterMap,
+			List<String> skuList) {
+		List<LireDocument> nearestMatchedImageList = new ArrayList<LireDocument>();
+		Map<String, LireDocument> lireDocMap = new HashMap<String, LireDocument>();
+		for(String hash : hashFeatureMap.keySet()){
+			String query = createLireQueryByHash(queryType, hash, hashFeatureMap.get(hash), rows, field, filterMap, skuList);
+			addToMap(lireDocMap, executeQuery(serverURL, query));
+		}
+		nearestMatchedImageList = (List<LireDocument>) lireDocMap.values();
+		Collections.sort(nearestMatchedImageList, new Comparator<LireDocument>() {
+
+			@Override
+			public int compare(LireDocument doc1, LireDocument doc2) {
+				return Double.compare(doc1.getD(), doc2.getD());
+			}
+		});
+		return nearestMatchedImageList;
+	}
+
+	private void addToMap(Map<String, LireDocument> lireDocMap, List<LireDocument> tempLireDocList) {
+		if(tempLireDocList == null || tempLireDocList.size() == 0){
+			return;
+		}
+		for(LireDocument lireDoc : tempLireDocList){
+			if(lireDocMap.containsKey(lireDoc.getProduct_id())){
+				LireDocument tempLireDoc = lireDocMap.get(lireDoc.getProduct_id());
+				if(Double.compare(lireDoc.getD(), tempLireDoc.getD()) < 0){
+					lireDocMap.put(lireDoc.getProduct_id(), lireDoc);
+				}
+			}else {
+				lireDocMap.put(lireDoc.getProduct_id(), lireDoc);
+			}
+		}
+	}
+
 	/**
 	 * This util method creates the lire query
 	 * @param queryType lireq

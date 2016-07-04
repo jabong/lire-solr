@@ -301,13 +301,13 @@ public class LireSolrQueryExecutor {
 	private List<LireDocument> getNearestMatchedImages(String serverURL, String queryType,
 			Map<String, String> hashFeatureMap, int rows, String field, Map<String, String> filterMap,
 			List<String> skuList) {
-		List<LireDocument> nearestMatchedImageList = new ArrayList<LireDocument>();
+		List<LireDocument> nearestMatchedImageList = null;
 		Map<String, LireDocument> lireDocMap = new HashMap<String, LireDocument>();
 		for(String hash : hashFeatureMap.keySet()){
 			String query = createLireQueryByHash(queryType, hash, hashFeatureMap.get(hash), rows, field, filterMap, skuList);
 			addToMap(lireDocMap, executeQuery(serverURL, query));
 		}
-		nearestMatchedImageList = (List<LireDocument>) lireDocMap.values();
+		nearestMatchedImageList = new ArrayList<LireDocument>(lireDocMap.values());
 		Collections.sort(nearestMatchedImageList, new Comparator<LireDocument>() {
 
 			@Override
